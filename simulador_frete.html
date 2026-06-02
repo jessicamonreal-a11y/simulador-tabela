@@ -1,0 +1,982 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador de Impacto — Tabelas de Frete</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap');
+:root {
+  --bg:#eef0f8; --card:#fff; --card2:#f5f6fc; --border:#dde1f0; --border2:#c7ccdf;
+  --blue:#3b5bdb; --blue2:#4c6ef5; --blue3:#eef1fd; --blue4:#dde3fb;
+  --purple:#7048e8; --purple2:#f3f0ff;
+  --navy:#1e2a6e;
+  --red:#c92a2a; --red2:#fff5f5; --red3:#ffe3e3;
+  --green:#2b8a3e; --green2:#f0faf2; --green3:#d3f9d8;
+  --amber:#e67700; --amber2:#fff8e1;
+  --text:#1a1d2e; --text2:#3d4266; --text3:#7e85a8;
+  --mono:'IBM Plex Mono',monospace;
+  --r:10px; --r2:7px;
+  --sh:0 1px 4px rgba(20,30,90,.07),0 4px 20px rgba(20,30,90,.06);
+  --sh-s:0 1px 3px rgba(20,30,90,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;font-size:14px;min-height:100vh}
+.wrap{max-width:1200px;margin:0 auto;padding:36px 24px 80px}
+
+/* Header */
+.eyebrow{display:inline-flex;align-items:center;gap:8px;background:var(--blue3);border:1px solid #bdc8f5;border-radius:20px;padding:4px 14px;font-size:11px;font-weight:600;color:var(--blue);letter-spacing:.7px;text-transform:uppercase;font-family:var(--mono);margin-bottom:14px}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--blue);animation:blink 2s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+h1{font-size:clamp(24px,3.5vw,38px);font-weight:800;letter-spacing:-.5px;line-height:1.1;margin-bottom:8px}
+h1 span{color:var(--blue)}
+.sub{font-size:14px;color:var(--text2);line-height:1.6;max-width:700px}
+
+/* Upload grid */
+.upload-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:28px 0 12px}
+@media(max-width:700px){.upload-grid{grid-template-columns:1fr}}
+
+.ucard{background:var(--card);border:1.5px dashed var(--border2);border-radius:var(--r);padding:0;cursor:pointer;transition:all .18s;display:flex;flex-direction:column;overflow:hidden}
+.ucard:hover{border-color:var(--blue2);border-style:solid;box-shadow:0 0 0 3px rgba(59,91,219,.09);transform:translateY(-1px)}
+.ucard.ok{border-style:solid;border-color:var(--blue);background:var(--blue3)}
+.ucard.err{border-style:solid;border-color:var(--red);background:var(--red2)}
+.ucard input{display:none}
+.uc-top{padding:18px 18px 14px;flex:1}
+.uc-icon{font-size:22px;margin-bottom:8px}
+.uc-tag{font-size:10px;font-weight:600;color:var(--text3);letter-spacing:1px;text-transform:uppercase;font-family:var(--mono);margin-bottom:3px}
+.uc-title{font-size:14px;font-weight:700;margin-bottom:3px}
+.uc-hint{font-size:11.5px;color:var(--text3);line-height:1.45}
+.uc-foot{padding:10px 18px;background:rgba(0,0,0,.02);border-top:1px solid var(--border);font-size:11px;font-family:var(--mono);color:var(--text3);transition:all .18s}
+.ucard.ok .uc-foot{color:var(--blue);background:rgba(59,91,219,.06);border-color:rgba(59,91,219,.15)}
+.ucard.err .uc-foot{color:var(--red);background:rgba(201,42,42,.05)}
+
+/* Hint note */
+.note{background:var(--blue3);border:1px solid #bdc8f5;border-radius:var(--r2);padding:10px 14px;font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:20px}
+.note strong{color:var(--blue)}
+
+/* Run + Export */
+.action-row{display:flex;gap:12px;margin-bottom:36px}
+.btn-run{flex:1;padding:14px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);font-family:'Inter',sans-serif;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.2px;transition:background .15s,transform .12s,opacity .15s}
+.btn-run:hover:not(:disabled){background:var(--navy);transform:translateY(-1px)}
+.btn-run:disabled{opacity:.35;cursor:not-allowed}
+.btn-xl{padding:13px 20px;background:var(--card);color:var(--blue);border:1.5px solid var(--blue);border-radius:var(--r);font-family:'Inter',sans-serif;font-size:13px;font-weight:600;cursor:pointer;display:none;align-items:center;gap:7px;white-space:nowrap;transition:background .15s,transform .12s}
+.btn-xl:hover{background:var(--blue3);transform:translateY(-1px)}
+
+/* Results */
+#results{display:none}
+.tabs{display:flex;gap:2px;background:var(--card2);border:1px solid var(--border);border-radius:var(--r);padding:3px;margin-bottom:22px;width:fit-content;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:var(--r2);font-size:13px;font-weight:500;cursor:pointer;color:var(--text3);border:none;background:transparent;font-family:'Inter',sans-serif;transition:all .15s}
+.tab.on{background:var(--blue);color:#fff;font-weight:700}
+.tc{display:none}.tc.on{display:block}
+
+/* Section head */
+.sh{display:flex;align-items:center;gap:10px;margin:24px 0 14px}
+.sh h2{font-size:12px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.9px;white-space:nowrap}
+.sh::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* Summary info strip */
+.info-strip{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px 18px;font-size:13px;color:var(--text2);margin-bottom:20px;line-height:1.7;box-shadow:var(--sh-s)}
+.info-strip strong{color:var(--text)}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:880px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:18px 16px;box-shadow:var(--sh-s)}
+.kpi.hl{background:var(--navy);border-color:var(--navy)}
+.kpi.hl .kl,.kpi.hl .ks{color:rgba(255,255,255,.6)}
+.kpi.hl .kv{color:#fff}
+.kl{font-size:10.5px;font-weight:500;color:var(--text3);text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px;font-family:var(--mono)}
+.kv{font-size:22px;font-weight:800;line-height:1;letter-spacing:-.3px}
+.kv.red{color:var(--red)}.kv.green{color:var(--green)}
+.ks{font-size:11px;color:var(--text3);margin-top:5px;font-family:var(--mono)}
+
+/* Table comparison cards */
+.modal-section{margin-bottom:26px}
+.modal-label{font-size:11px;font-weight:700;color:var(--blue);text-transform:uppercase;letter-spacing:1.1px;font-family:var(--mono);margin-bottom:12px;display:flex;align-items:center;gap:10px}
+.modal-label::after{content:'';flex:1;height:1.5px;background:var(--blue3)}
+.cmp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.cmp-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px;box-shadow:var(--sh-s)}
+.cmp-card.atual{border-left:3px solid var(--amber);background:var(--amber2)}
+.cmp-card.nova{border-left:3px solid var(--green);background:var(--green2)}
+.cc-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;font-family:var(--mono);margin-bottom:4px}
+.cc-label.is-atual{color:var(--amber)}.cc-label.is-nova{color:var(--green)}.cc-label.other{color:var(--text3)}
+.cc-name{font-size:14px;font-weight:700;margin-bottom:10px}
+.cc-pct{font-size:26px;font-weight:800;font-family:var(--mono);letter-spacing:-.5px;line-height:1}
+.cc-pct.red{color:var(--red)}.cc-pct.green{color:var(--green)}.cc-pct.zero{color:var(--text3)}
+.cc-range{font-size:11px;color:var(--text3);margin-top:5px;font-family:var(--mono)}
+.cc-base{font-size:11px;color:var(--amber);font-weight:600;margin-top:4px;font-family:var(--mono)}
+
+/* UF comparison table */
+.uf-two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:840px){.uf-two{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:20px 18px;box-shadow:var(--sh-s)}
+.ctitle{font-size:13px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.cdot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--blue);flex-shrink:0}
+
+/* Modal table */
+.mbt{width:100%;border-collapse:collapse}
+.mbt tr{border-bottom:1px solid var(--border)}
+.mbt tr:last-child{border-bottom:none}
+.mbt td{padding:10px 4px;font-size:13px;vertical-align:middle}
+.mbt td:not(:first-child){text-align:right}
+.mbt .tr-tot td{font-weight:700}
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:11px;font-family:var(--mono);font-weight:600}
+.badge.eco{background:var(--blue3);color:var(--blue)}
+.badge.rap{background:var(--purple2);color:var(--purple)}
+.badge.tot{background:#fff3cd;color:#664d03}
+.badge.pos{background:var(--red3);color:var(--red)}
+.badge.neg{background:var(--green3);color:var(--green)}
+.mn{font-family:var(--mono);font-size:12.5px;color:var(--text2)}
+
+/* Bar chart */
+.bars{display:flex;flex-direction:column;gap:8px}
+.br{display:flex;align-items:center;gap:8px}
+.br-uf{width:28px;font-size:12px;font-family:var(--mono);font-weight:600;color:var(--text2);text-align:right;flex-shrink:0}
+.br-track{flex:1;height:16px;background:var(--card2);border-radius:4px;overflow:hidden}
+.br-fill{height:100%;border-radius:4px;transition:width .5s ease}
+.br-fill.pos{background:linear-gradient(90deg,#c92a2a,#f03e3e)}
+.br-fill.neg{background:linear-gradient(90deg,#2b8a3e,#40c057)}
+.br-val{width:86px;text-align:right;font-size:11.5px;font-family:var(--mono);font-weight:600;flex-shrink:0}
+.br-pct{width:52px;text-align:right;font-size:11px;color:var(--text3);font-family:var(--mono);flex-shrink:0}
+
+/* Data tables */
+.tw{border:1px solid var(--border);border-radius:var(--r);overflow:hidden;max-height:500px;overflow-y:auto}
+.tw::-webkit-scrollbar{width:4px}
+.tw::-webkit-scrollbar-track{background:var(--card2)}
+.tw::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.dt{width:100%;border-collapse:collapse;font-size:13px;background:var(--card)}
+.dt thead th{background:var(--card2);color:var(--text3);font-size:10.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;padding:9px 13px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--border);position:sticky;top:0;font-family:var(--mono)}
+.dt thead th:not(:first-child){text-align:right}
+.dt tbody td{padding:8px 13px;border-bottom:1px solid var(--border)}
+.dt tbody td:not(:first-child){text-align:right;font-family:var(--mono);font-size:12px}
+.dt tbody tr:last-child td{border-bottom:none}
+.dt tbody tr:hover td{background:var(--blue3)}
+.fw{font-weight:700}
+.cr{color:var(--red);font-weight:700}.cg{color:var(--green);font-weight:700}
+.mbar{display:inline-block;width:32px;height:3px;background:var(--border);border-radius:2px;margin-right:5px;vertical-align:middle;overflow:hidden}
+.mbar span{display:block;height:100%;background:var(--blue2);border-radius:2px}
+
+/* Toast */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--navy);color:#fff;padding:11px 18px;border-radius:var(--r);font-size:12px;font-family:var(--mono);z-index:999;pointer-events:none;opacity:0;transform:translateY(10px);transition:all .22s}
+.toast.on{opacity:1;transform:translateY(0)}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:sp .6s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:840px){.two{grid-template-columns:1fr}}
+</style>
+</head>
+<style>
+#gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:9999}
+.gate-box{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:40px 36px;width:100%;max-width:360px;box-shadow:var(--sh);text-align:center}
+.gate-logo{font-size:28px;margin-bottom:16px}
+.gate-title{font-size:18px;font-weight:800;margin-bottom:6px}
+.gate-sub{font-size:13px;color:var(--text3);margin-bottom:24px}
+.gate-input{width:100%;padding:11px 14px;border:1.5px solid var(--border2);border-radius:var(--r2);font-family:'Inter',sans-serif;font-size:14px;color:var(--text);background:var(--card2);margin-bottom:12px;transition:border-color .15s;text-align:center;letter-spacing:2px}
+.gate-input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,91,219,.09)}
+.gate-input.shake{animation:shake .35s ease}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.gate-btn{width:100%;padding:12px;background:var(--blue);color:#fff;border:none;border-radius:var(--r2);font-family:'Inter',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:background .15s}
+.gate-btn:hover{background:var(--navy)}
+.gate-err{font-size:12px;color:var(--red);margin-top:8px;min-height:18px;font-family:var(--mono)}
+</style>
+
+<div id="gate">
+  <div class="gate-box">
+    <div class="gate-logo">🔒</div>
+    <div class="gate-title">Simulador de Frete</div>
+    <div class="gate-sub">Mandaê · Acesso restrito</div>
+    <input class="gate-input" id="gate-pw" type="password" placeholder="senha" onkeydown="if(event.key==='Enter')checkPW()">
+    <button class="gate-btn" onclick="checkPW()">Entrar</button>
+    <div class="gate-err" id="gate-err"></div>
+  </div>
+</div>
+
+<script>
+function checkPW(){
+  const v=document.getElementById('gate-pw').value;
+  if(v==='mandae2026'){document.getElementById('gate').style.display='none';}
+  else{const i=document.getElementById('gate-pw');i.classList.remove('shake');void i.offsetWidth;i.classList.add('shake');document.getElementById('gate-err').textContent='Senha incorreta';i.value='';i.focus();}
+}
+</script>
+
+<body>
+<div class="wrap">
+
+<header style="margin-bottom:28px">
+  <div class="eyebrow"><span class="pulse"></span>Mandaê · Simulador de Frete</div>
+  <h1>Comparativo de <span>Tabelas de Frete</span></h1>
+  <p class="sub">Suba a tabela atual, a tabela nova e os envios do cliente. O simulador calcula o impacto financeiro real e compara todas as tabelas entre si.</p>
+</header>
+
+<!-- Uploads -->
+<div class="upload-grid">
+
+  <label class="ucard" id="c-atual">
+    <input type="file" id="f-atual" accept=".xlsx">
+    <div class="uc-top">
+      <div class="uc-icon">📦</div>
+      <div class="uc-tag">01 · Obrigatório</div>
+      <div class="uc-title">Tabela Atual</div>
+      <div class="uc-hint">Tabela que o cliente usa hoje — base de referência para o cálculo</div>
+    </div>
+    <div class="uc-foot" id="st-atual">Clique para selecionar o arquivo .xlsx</div>
+  </label>
+
+  <label class="ucard" id="c-nova">
+    <input type="file" id="f-nova" accept=".xlsx">
+    <div class="uc-top">
+      <div class="uc-icon">🔄</div>
+      <div class="uc-tag">02 · Obrigatório</div>
+      <div class="uc-title">Tabela Nova</div>
+      <div class="uc-hint">Tabela a ser comparada — nova proposta ou tabela alternativa</div>
+    </div>
+    <div class="uc-foot" id="st-nova">Clique para selecionar o arquivo .xlsx</div>
+  </label>
+
+  <label class="ucard" id="c-env">
+    <input type="file" id="f-env" accept=".xlsx,.csv">
+    <div class="uc-top">
+      <div class="uc-icon">📋</div>
+      <div class="uc-tag">03 · Opcional</div>
+      <div class="uc-title">Envios do Cliente</div>
+      <div class="uc-hint">Planilha com os envios — calcula o impacto financeiro real sobre cada remessa</div>
+    </div>
+    <div class="uc-foot" id="st-env">Clique para selecionar o arquivo .xlsx</div>
+  </label>
+
+</div>
+
+<p class="note">
+  <strong>Formato esperado das tabelas:</strong> arquivo .xlsx com abas "Preços Econômico (com imposto)", "Preços Rápido (com imposto)", "Abrangencia Econômico" e "Abrangencia Rápido". As abas de preço têm colunas por UF e linhas por faixa de peso em gramas.<br>
+  <strong>Envios:</strong> qualquer planilha com as colunas <code>uf</code>, <code>cep_destino</code>, <code>peso_kg</code>, <code>comprimento</code>, <code>largura</code>, <code>altura</code>, <code>valor_declarado</code> e <code>servico_envio</code>.
+</p>
+
+<div class="action-row">
+  <button class="btn-run" id="btn-run" disabled onclick="run()">Calcular Impacto</button>
+  <button class="btn-xl" id="btn-xl" onclick="exportXL()">
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2M8 2v8M5 7l3 3 3-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Baixar Excel
+  </button>
+</div>
+
+<!-- RESULTS -->
+<div id="results">
+
+  <div class="tabs" id="tabs">
+    <button class="tab on" onclick="sw('tabelas')">📊 Tabelas × Tabelas</button>
+    <button class="tab" id="tab-env-btn" onclick="sw('envios')" style="display:none">📦 Impacto nos Envios</button>
+  </div>
+
+  <!-- TAB: TABLE COMPARISON -->
+  <div class="tc on" id="tc-tabelas">
+    <div class="info-strip" id="tbl-info"></div>
+
+    <div class="modal-section">
+      <div class="modal-label">Econômico</div>
+      <div class="cmp-grid" id="cmp-eco"></div>
+    </div>
+    <div class="modal-section">
+      <div class="modal-label">Rápido / Expresso</div>
+      <div class="cmp-grid" id="cmp-rap"></div>
+    </div>
+
+    <div class="sh"><h2>Detalhe por UF — Atual vs Nova</h2></div>
+    <div class="uf-two">
+      <div>
+        <div class="ctitle"><span class="cdot"></span>Econômico</div>
+        <div class="tw"><table class="dt">
+          <thead><tr><th>UF</th><th>Preço Médio Atual</th><th>Preço Médio Novo</th><th>Dif. Média %</th><th>Dif. Mín %</th><th>Dif. Máx %</th></tr></thead>
+          <tbody id="uf-eco"></tbody>
+        </table></div>
+      </div>
+      <div>
+        <div class="ctitle"><span class="cdot" style="background:var(--purple)"></span>Rápido / Expresso</div>
+        <div class="tw"><table class="dt">
+          <thead><tr><th>UF</th><th>Preço Médio Atual</th><th>Preço Médio Novo</th><th>Dif. Média %</th><th>Dif. Mín %</th><th>Dif. Máx %</th></tr></thead>
+          <tbody id="uf-rap"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: ENVIOS -->
+  <div class="tc" id="tc-envios">
+    <div class="info-strip" id="env-info"></div>
+
+    <div class="sh"><h2>Resumo Executivo</h2></div>
+    <div class="kpis" id="kpis"></div>
+
+    <div class="sh" style="margin-top:22px"><h2>Por Modalidade &amp; Top UFs</h2></div>
+    <div class="two">
+      <div class="card">
+        <div class="ctitle"><span class="cdot"></span>Por Modalidade</div>
+        <table class="mbt" id="mbt"></table>
+      </div>
+      <div class="card">
+        <div class="ctitle"><span class="cdot" style="background:var(--purple)"></span>Top 10 UFs — Diferença R$</div>
+        <div class="bars" id="bars"></div>
+      </div>
+    </div>
+
+    <div class="sh"><h2>Detalhe por UF</h2></div>
+    <div class="tw"><table class="dt">
+      <thead><tr><th>UF</th><th>Envios</th><th>% dos Envios</th><th>Frete Atual</th><th>Frete Novo (est.)</th><th>Diferença R$</th><th>Diferença %</th></tr></thead>
+      <tbody id="uf-envios"></tbody>
+    </table></div>
+  </div>
+
+</div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════════════════
+const BRL = n => 'R$ ' + n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const PCT = n => (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
+const N   = n => n.toLocaleString('pt-BR');
+const AVG = a => a.length ? a.reduce((s,v)=>s+v,0)/a.length : 0;
+const name = sheets => sheets['Home']?.find?.(r => r && r[1] && String(r[1]).includes('Tabela'))
+  ?.[1]?.replace('Tabela de Frete ','') || 'Tabela';
+
+function toast(msg, dur=3500) {
+  const e = document.getElementById('toast');
+  e.textContent = msg; e.classList.add('on');
+  setTimeout(() => e.classList.remove('on'), dur);
+}
+function sw(t) {
+  document.querySelectorAll('.tab').forEach((b,i) => b.classList.toggle('on', ['tabelas','envios'][i] === t));
+  document.querySelectorAll('.tc').forEach(c => c.classList.toggle('on', c.id === 'tc-'+t));
+}
+
+// ══════════════════════════════════════════════════════
+// FILE READING
+// ══════════════════════════════════════════════════════
+const S = { atual: null, nova: null, env: null };
+let RESULT = null;
+
+function readXL(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type:'array' });
+        const out = {};
+        wb.SheetNames.forEach(n => { out[n] = XLSX.utils.sheet_to_json(wb.Sheets[n], { header:1, defval:null }); });
+        res(out);
+      } catch(err) { rej(err); }
+    };
+    r.onerror = () => rej(new Error('Falha na leitura'));
+    r.readAsArrayBuffer(file);
+  });
+}
+
+function setupUpload(inId, cId, stId, key) {
+  document.getElementById(inId).addEventListener('change', async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const card = document.getElementById(cId), st = document.getElementById(stId);
+    try {
+      S[key] = await readXL(f);
+      card.classList.add('ok'); card.classList.remove('err');
+      st.textContent = '✓ ' + f.name;
+    } catch(err) {
+      S[key] = null; card.classList.add('err'); card.classList.remove('ok');
+      st.textContent = '✗ ' + err.message;
+    }
+    checkReady();
+  });
+}
+setupUpload('f-atual','c-atual','st-atual','atual');
+setupUpload('f-nova', 'c-nova', 'st-nova', 'nova');
+setupUpload('f-env',  'c-env',  'st-env',  'env');
+function checkReady() { document.getElementById('btn-run').disabled = !(S.atual && S.nova); }
+
+// ══════════════════════════════════════════════════════
+// PRICE TABLE PARSER
+// Structure:
+//   Row 5: 'PESO (g)', [empty], SP, RJ, ...TO, 'PESO (g)', [empty], SP, RJ, ...TO
+//   Row 6+: peso_from(g), peso_to(g), prices...   (capital), peso_from, peso_to, prices... (interior)
+// ══════════════════════════════════════════════════════
+function parsePriceSheet(rows) {
+  // Find header row (has 'PESO (g)')
+  let hi = -1;
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i] && rows[i].some(v => String(v||'').trim() === 'PESO (g)')) { hi = i; break; }
+  }
+  if (hi < 0) return null;
+
+  const hrow = rows[hi];
+  // Find the two PESO(g) column positions
+  const pesoCols = hrow.reduce((a,v,i) => { if (String(v||'').trim() === 'PESO (g)') a.push(i); return a; }, []);
+  if (!pesoCols.length) return null;
+
+  // Extract UF names for each section
+  const sections = pesoCols.map((pc, si) => {
+    const ufs = [];
+    for (let j = pc + 2; j < (pesoCols[si+1] || hrow.length); j++) {
+      const v = hrow[j];
+      if (v !== null && v !== undefined && String(v).trim().length === 2 && /^[A-Z]{2}$/.test(String(v).trim()))
+        ufs.push({ uf: String(v).trim(), col: j });
+    }
+    return { pesoFromCol: pc, pesoToCol: pc+1, ufs, label: si === 0 ? 'Capital' : 'Interior' };
+  });
+
+  // Build price data: { Capital: { UF: [[from_g, to_g, price], ...] }, Interior: {...} }
+  const data = {};
+  sections.forEach(sec => { data[sec.label] = {}; sec.ufs.forEach(u => { data[sec.label][u.uf] = []; }); });
+
+  for (let ri = hi + 1; ri < rows.length; ri++) {
+    const row = rows[ri]; if (!row) continue;
+    sections.forEach(sec => {
+      const pf = row[sec.pesoFromCol], pt = row[sec.pesoToCol];
+      if (pf === null || pf === undefined || isNaN(+pf)) return;
+      sec.ufs.forEach(u => {
+        const p = row[u.col];
+        if (p !== null && p !== undefined && !isNaN(+p))
+          data[sec.label][u.uf].push([+pf, +pt, +p]);
+      });
+    });
+  }
+  return data;
+}
+
+function getPrice(data, tipo, uf, peso_g) {
+  const rows = (data[tipo] || data['Capital'] || {})[uf];
+  if (!rows || !rows.length) return null;
+  const r = rows.find(r => r[0] <= peso_g && peso_g <= r[1]);
+  if (r) return r[2];
+  // Edge case: below min
+  const sorted = [...rows].sort((a,b) => a[0]-b[0]);
+  if (peso_g <= sorted[0][1]) return sorted[0][2];
+  // Above max
+  return sorted[sorted.length-1][2];
+}
+
+// ══════════════════════════════════════════════════════
+// ABRANGÊNCIA PARSER
+// Row 3: headers | Row 4+: data
+// Cols: 0=CEP inicio, 1=CEP fim, 2=UF, 3=Tipo, 4=Taxa seguro, 5=Área, 6=Prazo
+// ══════════════════════════════════════════════════════
+function parseAbr(rows) {
+  let hi = -1;
+  for (let i = 0; i < Math.min(6, rows.length); i++) {
+    if (rows[i] && rows[i].some(v => String(v||'').toLowerCase().includes('cep inicio') || String(v||'').toLowerCase().includes('cep start')))
+      { hi = i; break; }
+  }
+  if (hi < 0) return [];
+  const out = [];
+  for (let i = hi+1; i < rows.length; i++) {
+    const r = rows[i]; if (!r || r[0] === null || r[0] === undefined) continue;
+    try { out.push({ cs: +r[0], ce: +r[1], uf: String(r[2]||'').trim(), tipo: String(r[3]||'').trim(), pctSeg: +r[4] }); }
+    catch {}
+  }
+  return out.sort((a,b) => a.cs - b.cs);
+}
+
+function cepLookup(cep, abr) {
+  let lo = 0, hi = abr.length - 1;
+  while (lo <= hi) {
+    const mid = (lo+hi) >> 1;
+    if (abr[mid].cs > cep) hi = mid-1;
+    else if (abr[mid].ce < cep) lo = mid+1;
+    else return abr[mid];
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════════════
+// FRETE CALCULATION
+// peso_g: weight in grams (from envio: peso_kg * 1000)
+// tipo: Capital or Interior (from Abrangência)
+// ══════════════════════════════════════════════════════
+function calcFrete(priceData, abr, cep, pesoKg, co, la, al, vd) {
+  const zi = cepLookup(cep, abr);
+  if (!zi) return null;
+  const { uf, tipo, pctSeg } = zi;
+  // No cubic weight in this format — use real weight in grams
+  const pesoG = Math.round(pesoKg * 1000);
+  const tarifa = getPrice(priceData, tipo, uf, pesoG);
+  if (tarifa === null) return null;
+  const frete = tarifa + (vd > 0 ? vd * pctSeg : 0);
+  return { frete: Math.round(frete * 10000) / 10000, uf, tipo };
+}
+
+// ══════════════════════════════════════════════════════
+// TABLE-TO-TABLE COMPARISON
+// ══════════════════════════════════════════════════════
+function compareTables(atual, nova) {
+  // Returns per-UF stats for each tipo (Capital/Interior combined → by UF)
+  const byUF = {};
+  ['Capital','Interior'].forEach(tipo => {
+    const aData = atual[tipo] || {}; const nData = nova[tipo] || {};
+    Object.keys(aData).forEach(uf => {
+      const aRows = aData[uf]; const nRows = nData[uf];
+      if (!aRows || !nRows) return;
+      aRows.forEach((ar, idx) => {
+        const nr = nRows[idx];
+        if (!nr || ar[2] === 0) return;
+        const diff = (nr[2] - ar[2]) / ar[2] * 100;
+        (byUF[uf] = byUF[uf] || { p1s:[], p2s:[], ds:[] }).p1s.push(ar[2]);
+        byUF[uf].p2s.push(nr[2]);
+        byUF[uf].ds.push(diff);
+      });
+    });
+  });
+  return Object.entries(byUF).map(([uf,v]) => ({
+    uf, p1avg: AVG(v.p1s), p2avg: AVG(v.p2s),
+    davg: AVG(v.ds), dmin: Math.min(...v.ds), dmax: Math.max(...v.ds)
+  })).sort((a,b) => b.davg - a.davg);
+}
+
+// Global % difference between two price tables
+function globalDiff(atual, nova) {
+  const diffs = [];
+  ['Capital','Interior'].forEach(tipo => {
+    const aData = atual[tipo] || {}; const nData = nova[tipo] || {};
+    Object.keys(aData).forEach(uf => {
+      const aRows = aData[uf]; const nRows = nData[uf];
+      if (!aRows || !nRows) return;
+      aRows.forEach((ar, idx) => {
+        const nr = nRows[idx];
+        if (!nr || ar[2] === 0) return;
+        diffs.push((nr[2] - ar[2]) / ar[2] * 100);
+      });
+    });
+  });
+  return { avg: AVG(diffs), min: diffs.length ? Math.min(...diffs) : 0, max: diffs.length ? Math.max(...diffs) : 0 };
+}
+
+// ══════════════════════════════════════════════════════
+// SHIPMENTS PARSER
+// Suporta 3 formatos:
+// Formato A (Query_atualizada / Extração_Volumetria .xlsx):
+//   uf, cep_destino, peso_kg, comprimento, largura, altura,
+//   valor_declarado, servico_envio → valor: preco_frete
+// Formato B (CSV invoice):
+//   ufDestinatario, cepDestinatario, peso (gramas!), comprimento,
+//   largura, altura, valorDeclarado, tipo → valor: valor
+// ══════════════════════════════════════════════════════
+function parseShipments(sheets) {
+  for (const rows of Object.values(sheets)) {
+    if (!rows || rows.length < 2) continue;
+    for (let hi = 0; hi < Math.min(5, rows.length); hi++) {
+      const lower = (rows[hi]||[]).map(v => String(v||'').toLowerCase().trim());
+
+      // ── Detect Format B (CSV invoice): has 'cepdestinatario' ──
+      const isFormatB = lower.includes('cepdestinatario');
+
+      // ── Column indices ─────────────────────────────────────────
+      const ufI  = isFormatB
+        ? lower.findIndex(v => v === 'ufdestinatario')
+        : lower.findIndex(v => v === 'uf');
+
+      const cepI = isFormatB
+        ? lower.findIndex(v => v === 'cepdestinatario')
+        : lower.findIndex(v => v === 'cep_destino' || v === 'cep');
+
+      // peso: Format B has 'peso' in grams; Format A has 'peso_kg'
+      const pI = isFormatB
+        ? lower.findIndex(v => v === 'peso')
+        : lower.findIndex(v => v === 'peso_kg' || (v.includes('peso') && v.includes('kg')));
+
+      // service/modality
+      const svcI = isFormatB
+        ? lower.findIndex(v => v === 'tipo')
+        : lower.findIndex(v => v === 'servico_envio' || v === 'servico' || v === 'modalidade');
+
+      // VD
+      const vdI = isFormatB
+        ? lower.findIndex(v => v === 'valordeclarado')
+        : lower.findIndex(v => v === 'valor_declarado' || v === 'vd');
+
+      // dimensions
+      const coI = lower.findIndex(v => v === 'comprimento' || v === 'co (cm)' || v === 'co');
+      const laI = lower.findIndex(v => v === 'largura'     || v === 'la (cm)' || v === 'la');
+      const alI = lower.findIndex(v => v === 'altura'      || v === 'al (cm)' || v === 'al');
+
+      // frete value: Format B uses 'valor'; Format A uses 'preco_frete'
+      const frI = isFormatB
+        ? lower.findIndex(v => v === 'valor')
+        : lower.findIndex(v => v === 'preco_frete' || v === 'frete');
+
+      if (cepI < 0 || pI < 0) continue;
+
+      const ships = [];
+      for (let ri = hi+1; ri < rows.length; ri++) {
+        const r = rows[ri]; if (!r) continue;
+        const cep = r[cepI], pesoRaw = r[pI];
+        if (cep===null||cep===undefined||pesoRaw===null||pesoRaw===undefined) continue;
+        if (isNaN(+cep) || isNaN(+pesoRaw)) continue;
+
+        // Format B: peso in grams → convert to kg
+        const pesoKg = isFormatB ? +pesoRaw / 1000 : +pesoRaw;
+
+        // Normalise service name
+        let svcRaw = svcI >= 0 && r[svcI] ? String(r[svcI]).trim() : 'Econômico';
+        // Format B: "Encomenda Economica" → "Econômico"; anything with "rapido"/"expresso" → "Rápido/Expresso"
+        if (isFormatB) {
+          const sl = svcRaw.toLowerCase();
+          svcRaw = (sl.includes('rap') || sl.includes('express')) ? 'Rápido/Expresso' : 'Econômico';
+        }
+
+        ships.push({
+          uf:           ufI  >= 0 && r[ufI]  ? String(r[ufI]).trim().toUpperCase() : null,
+          cep:          +cep,
+          peso:         pesoKg,
+          svc:          svcRaw,
+          vd:           vdI  >= 0 && r[vdI]  !== null ? +r[vdI]  : 0,
+          co:           coI  >= 0 && r[coI]  !== null ? +r[coI]  : 15,
+          la:           laI  >= 0 && r[laI]  !== null ? +r[laI]  : 15,
+          al:           alI  >= 0 && r[alI]  !== null ? +r[alI]  : 15,
+          freteArquivo: frI  >= 0 && r[frI]  !== null ? +r[frI]  : null,
+        });
+      }
+      if (ships.length) return ships;
+    }
+  }
+  throw new Error('Precisa das colunas: cep_destino (ou cepDestinatario) e peso_kg (ou peso em gramas)');
+}
+
+// ══════════════════════════════════════════════════════
+// MAIN RUN
+// ══════════════════════════════════════════════════════
+function run() {
+  const btn = document.getElementById('btn-run');
+  btn.innerHTML = '<span class="spin"></span>Calculando...';
+  btn.disabled = true;
+
+  setTimeout(() => {
+    try {
+      // ── Parse price tables ──────────────────────────────────────
+      const ECO_SHEET = 'Preços Econômico (com imposto)';
+      const RAP_SHEET = 'Preços Rápido (com imposto)';
+      const ABR_ECO   = 'Abrangencia Econômico';
+      const ABR_RAP   = 'Abrangencia Rápido';
+
+      function getSheet(sheets, key) {
+        if (sheets[key]) return sheets[key];
+        // Fuzzy match
+        const k = Object.keys(sheets).find(n => n.toLowerCase().includes(key.toLowerCase().split(' ')[1]));
+        return k ? sheets[k] : null;
+      }
+
+      const atualEco = parsePriceSheet(getSheet(S.atual, ECO_SHEET));
+      const atualRap = parsePriceSheet(getSheet(S.atual, RAP_SHEET));
+      const novaEco  = parsePriceSheet(getSheet(S.nova,  ECO_SHEET));
+      const novaRap  = parsePriceSheet(getSheet(S.nova,  RAP_SHEET));
+
+      if (!atualEco) throw new Error('Tabela atual: aba Econômico não encontrada');
+      if (!novaEco)  throw new Error('Tabela nova: aba Econômico não encontrada');
+
+      const abrEco = parseAbr(getSheet(S.atual, ABR_ECO) || []);
+      const abrRap = parseAbr(getSheet(S.atual, ABR_RAP) || abrEco);
+
+      const nomeAtual = name(S.atual);
+      const nomeNova  = name(S.nova);
+
+      // ── Table comparison stats ──────────────────────────────────
+      const ufEco = compareTables(atualEco, novaEco);
+      const ufRap = atualRap && novaRap ? compareTables(atualRap, novaRap) : [];
+      const gEco  = globalDiff(atualEco, novaEco);
+      const gRap  = atualRap && novaRap ? globalDiff(atualRap, novaRap) : null;
+
+      // ── Shipments ───────────────────────────────────────────────
+      let ships = null;
+      if (S.env) {
+        try {
+          ships = parseShipments(S.env);
+          let unmapped = 0;
+          ships.forEach(s => {
+            const isEco = !s.svc.toLowerCase().includes('rap') && !s.svc.toLowerCase().includes('express');
+            const priceAtual = isEco ? atualEco : (atualRap || atualEco);
+            const priceNova  = isEco ? novaEco  : (novaRap  || novaEco);
+            const abr = isEco ? abrEco : abrRap;
+            s.modal = isEco ? 'Econômico' : 'Rápido/Expresso';
+
+            const ra = calcFrete(priceAtual, abr, s.cep, s.peso, s.co, s.la, s.al, s.vd);
+            const rn = calcFrete(priceNova,  abr, s.cep, s.peso, s.co, s.la, s.al, s.vd);
+            s.freteAtual = ra ? ra.frete : null;
+            s.freteNova  = rn ? rn.frete : null;
+            s.uf = s.uf || (ra ? ra.uf : (rn ? rn.uf : null));
+            if (!ra && !rn) unmapped++;
+          });
+          if (unmapped) toast(`⚠ ${unmapped} envio(s) com CEP fora da Abrangência`);
+        } catch(err) { toast('Envios: ' + err.message); ships = null; }
+      }
+
+      RESULT = { nomeAtual, nomeNova, ufEco, ufRap, gEco, gRap, ships };
+
+      renderTabelas(RESULT);
+      if (ships && ships.length) {
+        renderEnvios(RESULT);
+        document.getElementById('tab-env-btn').style.display = '';
+        sw('envios');
+      } else {
+        sw('tabelas');
+      }
+
+      document.getElementById('results').style.display = 'block';
+      document.getElementById('btn-xl').style.display = 'flex';
+      document.getElementById('results').scrollIntoView({ behavior:'smooth', block:'start' });
+
+    } catch(err) { toast('Erro: ' + err.message); console.error(err); }
+    btn.innerHTML = 'Calcular Impacto';
+    btn.disabled = false;
+  }, 30);
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER: TABLES TAB
+// ══════════════════════════════════════════════════════
+function renderTabelas({ nomeAtual, nomeNova, ufEco, ufRap, gEco, gRap }) {
+  // Overall % across both modalities
+  const gGeral = (gEco && gRap)
+    ? { avg: (gEco.avg + gRap.avg) / 2, min: Math.min(gEco.min, gRap.min), max: Math.max(gEco.max, gRap.max) }
+    : (gEco || gRap);
+
+  document.getElementById('tbl-info').innerHTML =
+    `Tabela atual: <strong>${nomeAtual}</strong> &nbsp;→&nbsp; Tabela nova: <strong>${nomeNova}</strong>. ` +
+    `Comparação direta entre preços de cada UF e faixa de peso (Capital + Interior). ` +
+    (gGeral ? `Diferença geral (Eco + Rap): <strong style="color:${gGeral.avg>=0?'var(--red)':'var(--green)'}">${PCT(gGeral.avg)}</strong>. ` : '') +
+    `Positivo = nova mais cara; negativo = nova mais barata.`;
+
+  function makeCards(gDiff, ufData, modal, containerId) {
+    if (!gDiff) { document.getElementById(containerId).innerHTML = '<p style="color:var(--text3);font-size:13px">Aba não encontrada nas tabelas</p>'; return; }
+    const cls = gDiff.avg >= 0 ? 'red' : 'green';
+    document.getElementById(containerId).innerHTML = `
+      <div class="cmp-card atual">
+        <div class="cc-label is-atual">Tabela Atual</div>
+        <div class="cc-name">${nomeAtual}</div>
+        <div class="cc-pct zero">—</div>
+        <div class="cc-base">referência</div>
+      </div>
+      <div class="cmp-card nova">
+        <div class="cc-label is-nova">Tabela Nova — % Geral</div>
+        <div class="cc-name">${nomeNova}</div>
+        <div class="cc-pct ${cls}">${PCT(gDiff.avg)}</div>
+        <div class="cc-range">mín ${PCT(gDiff.min)} / máx ${PCT(gDiff.max)}</div>
+      </div>`;
+  }
+
+  makeCards(gEco, ufEco, 'eco', 'cmp-eco');
+  makeCards(gRap, ufRap, 'rap', 'cmp-rap');
+
+  function makeUFTable(ufData, tbodyId) {
+    document.getElementById(tbodyId).innerHTML = ufData.map((u,i) => `
+      <tr style="${i%2===0?'background:var(--blue3)':''}">
+        <td class="fw">${u.uf}</td>
+        <td>${BRL(u.p1avg)}</td>
+        <td>${BRL(u.p2avg)}</td>
+        <td class="${u.davg>=0?'cr':'cg'}">${PCT(u.davg)}</td>
+        <td style="color:var(--text3)">${PCT(u.dmin)}</td>
+        <td style="color:var(--text3)">${PCT(u.dmax)}</td>
+      </tr>`).join('');
+  }
+  makeUFTable(ufEco, 'uf-eco');
+  makeUFTable(ufRap, 'uf-rap');
+}
+
+// ══════════════════════════════════════════════════════
+// RENDER: ENVIOS TAB
+// ══════════════════════════════════════════════════════
+function renderEnvios({ nomeAtual, nomeNova, ships, gEco, gRap }) {
+  const valid = ships.filter(s => s.freteAtual !== null && s.freteNova !== null);
+  const tot = valid.length;
+  if (!tot) { document.getElementById('env-info').textContent = 'Nenhum envio calculado (CEPs não encontrados na Abrangência).'; return; }
+
+  const sumA = valid.reduce((s,r)=>s+r.freteAtual,0);
+  const sumN = valid.reduce((s,r)=>s+r.freteNova,0);
+  const dif = sumN - sumA, pct = dif / sumA * 100;
+
+  document.getElementById('env-info').innerHTML =
+    `Cálculo por envio: CEP → UF e tipo (Capital/Interior) via Abrangência. Frete = preço na faixa de peso + seguro sobre VD. ` +
+    `<strong>${tot}</strong> envios calculados${tot < ships.length ? ` (${ships.length-tot} fora da Abrangência)` : ''}.`;
+
+  document.getElementById('kpis').innerHTML = `
+    <div class="kpi"><div class="kl">Total Envios</div><div class="kv">${N(tot)}</div><div class="ks">calculados</div></div>
+    <div class="kpi"><div class="kl">Frete ${nomeAtual}</div><div class="kv">${BRL(sumA)}</div><div class="ks">tabela atual</div></div>
+    <div class="kpi"><div class="kl">Frete ${nomeNova}</div><div class="kv">${BRL(sumN)}</div><div class="ks">tabela nova</div></div>
+    <div class="kpi hl"><div class="kl">Diferença Total</div><div class="kv ${dif>=0?'red':'green'}">${BRL(dif)}</div><div class="ks">${PCT(pct)} vs atual</div></div>`;
+
+  // By modal
+  const byMod = {};
+  valid.forEach(s => {
+    (byMod[s.modal] = byMod[s.modal] || {n:0,a:0,n2:0}).n++;
+    byMod[s.modal].a += s.freteAtual; byMod[s.modal].n2 += s.freteNova;
+  });
+  let mt = '';
+  ['Econômico','Rápido/Expresso'].forEach(m => {
+    const d = byMod[m]; if (!d) return;
+    const dv = d.n2-d.a, dp = dv/d.a*100;
+    mt += `<tr><td><span class="badge ${m==='Econômico'?'eco':'rap'}">${m}</span></td>
+      <td class="mn">${N(d.n)} <span style="color:var(--text3)">(${(d.n/tot*100).toFixed(1)}%)</span></td>
+      <td class="mn">${BRL(d.a)}</td>
+      <td><span class="badge ${dv>=0?'pos':'neg'}">${PCT(dp)}</span></td></tr>`;
+  });
+  mt += `<tr class="tr-tot"><td><span class="badge tot">Total</span></td><td class="mn">${N(tot)}</td><td class="mn">${BRL(sumA)}</td><td><span class="badge ${dif>=0?'pos':'neg'}">${PCT(pct)}</span></td></tr>`;
+  document.getElementById('mbt').innerHTML = mt;
+
+  // By UF
+  const byUF = {};
+  valid.forEach(s => {
+    const uf = s.uf || '??';
+    (byUF[uf] = byUF[uf] || {n:0,a:0,n2:0}).n++;
+    byUF[uf].a += s.freteAtual; byUF[uf].n2 += s.freteNova;
+  });
+  const ufArr = Object.entries(byUF).map(([uf,d])=>({uf,n:d.n,a:d.a,n2:d.n2,dif:d.n2-d.a,pct:(d.n2-d.a)/d.a*100,pe:d.n/tot*100})).sort((a,b)=>Math.abs(b.dif)-Math.abs(a.dif));
+  const maxD = Math.max(...ufArr.map(u=>Math.abs(u.dif))) || 1;
+
+  document.getElementById('bars').innerHTML = ufArr.slice(0,10).map(u=>`
+    <div class="br"><span class="br-uf">${u.uf}</span>
+    <div class="br-track"><div class="br-fill ${u.dif>=0?'pos':'neg'}" style="width:${(Math.abs(u.dif)/maxD*100).toFixed(1)}%"></div></div>
+    <span class="br-val" style="color:${u.dif>=0?'var(--red)':'var(--green)'}">${BRL(u.dif)}</span>
+    <span class="br-pct">${PCT(u.pct)}</span></div>`).join('');
+
+  document.getElementById('uf-envios').innerHTML = ufArr.map(u=>`
+    <tr><td class="fw">${u.uf}</td>
+    <td style="font-family:var(--mono);font-size:12px">${N(u.n)}</td>
+    <td>
+      <span class="mbar"><span style="width:${u.pe.toFixed(1)}%"></span></span>
+      <span style="font-family:var(--mono);font-size:12px;font-weight:600;color:var(--blue)">${u.pe.toFixed(1)}%</span>
+    </td>
+    <td>${BRL(u.a)}</td><td>${BRL(u.n2)}</td>
+    <td class="${u.dif>=0?'cr':'cg'}">${BRL(u.dif)}</td>
+    <td class="${u.dif>=0?'cr':'cg'}">${PCT(u.pct)}</td></tr>`).join('');
+}
+
+// ══════════════════════════════════════════════════════
+// EXCEL EXPORT
+// ══════════════════════════════════════════════════════
+function exportXL() {
+  if (!RESULT) return;
+  const { nomeAtual, nomeNova, ufEco, ufRap, gEco, gRap, ships } = RESULT;
+  const BD='1e2a6e', BM='2E75B6', BL='dde3fb', WH='FFFFFF', RD='c92a2a', GN='2b8a3e', YL='FFF2CC';
+
+  function SC(v, fg, bg, bold, nf, al='center') {
+    return { v, t: typeof v==='number'?'n':'s', s:{
+      font:{ name:'Arial', bold:!!bold, color:{ rgb: fg||'000000' } },
+      fill:{ fgColor:{ rgb: bg||WH }, patternType:'solid' },
+      alignment:{ horizontal:al, vertical:'center', wrapText:true },
+      border:{ top:{style:'thin',color:{rgb:'CCCCCC'}}, bottom:{style:'thin',color:{rgb:'CCCCCC'}},
+               left:{style:'thin',color:{rgb:'CCCCCC'}}, right:{style:'thin',color:{rgb:'CCCCCC'}} },
+      numFmt: nf||'' }};
+  }
+  const SL = (v,fg,bg,bold,nf) => { const c=SC(v,fg,bg,bold,nf); c.s.alignment.horizontal='left'; return c; };
+  const SR = (v,fg,bg,bold,nf) => { const c=SC(v,fg,bg,bold,nf); c.s.alignment.horizontal='right'; return c; };
+  const H  = v => SC(v, WH, BM, true);
+  const T  = v => SC(v, WH, BD, true);
+  function sc(ws, r, c, cell) { ws[XLSX.utils.encode_cell({r,c})] = cell; }
+
+  const wb = XLSX.utils.book_new();
+
+  // ── Sheet 1: Resumo tabelas ─────────────────────────────────────
+  const ws1 = {};
+  sc(ws1,0,0,T(`Comparativo de Tabelas — ${nomeAtual} vs ${nomeNova}`));
+  for(let c=1;c<6;c++) sc(ws1,0,c,T(''));
+  ['Modalidade','Tabela','Dif. % Média','Dif. % Mínima','Dif. % Máxima','Tipo'].forEach((h,c)=>sc(ws1,1,c,H(h)));
+
+  let r=2;
+  [['Econômico', gEco], ['Rápido/Expresso', gRap]].forEach(([modal, gd]) => {
+    if (!gd) return;
+    const fg = gd.avg >= 0 ? RD : GN;
+    sc(ws1,r,0,SL(modal,null,r%2===0?BL:WH)); sc(ws1,r,1,SL(nomeAtual,null,r%2===0?BL:WH));
+    sc(ws1,r,2,SC('Referência','888888',r%2===0?BL:WH)); sc(ws1,r,3,SC('—',null,r%2===0?BL:WH));
+    sc(ws1,r,4,SC('—',null,r%2===0?BL:WH)); sc(ws1,r,5,SC('—',null,r%2===0?BL:WH)); r++;
+    sc(ws1,r,0,SL(modal,null,r%2===0?BL:WH)); sc(ws1,r,1,SL(nomeNova,null,r%2===0?BL:WH,true));
+    sc(ws1,r,2,SC(gd.avg/100,fg,r%2===0?BL:WH,true,'+0.00%;-0.00%'));
+    sc(ws1,r,3,SC(gd.min/100,null,r%2===0?BL:WH,false,'+0.00%;-0.00%'));
+    sc(ws1,r,4,SC(gd.max/100,null,r%2===0?BL:WH,false,'+0.00%;-0.00%'));
+    sc(ws1,r,5,SC('vs '+nomeAtual,null,r%2===0?BL:WH)); r++;
+  });
+  ws1['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r,c:5}});
+  ws1['!merges']=[{s:{r:0,c:0},e:{r:0,c:5}}];
+  ws1['!cols']=[22,22,16,15,15,14].map(w=>({wch:w}));
+  XLSX.utils.book_append_sheet(wb,ws1,'Resumo Tabelas');
+
+  // ── Sheet 2: UF Econômico ───────────────────────────────────────
+  function makeUFSheet(ufData, sheetName) {
+    const ws = {};
+    sc(ws,0,0,T(`${sheetName} — ${nomeAtual} vs ${nomeNova}`)); for(let c=1;c<5;c++) sc(ws,0,c,T(''));
+    ['UF','Preço Médio Atual','Preço Médio Novo','Dif. %','Dif. Mín %','Dif. Máx %'].forEach((h,c)=>sc(ws,1,c,H(h)));
+    ufData.forEach((u,i)=>{
+      const bg=i%2===0?BL:WH, fg=u.davg>=0?RD:GN;
+      sc(ws,i+2,0,SC(u.uf,null,bg,true));
+      sc(ws,i+2,1,SR(u.p1avg,null,bg,false,'R$ #,##0.00'));
+      sc(ws,i+2,2,SR(u.p2avg,null,bg,false,'R$ #,##0.00'));
+      sc(ws,i+2,3,SC(u.davg/100,fg,bg,true,'+0.00%;-0.00%'));
+      sc(ws,i+2,4,SC(u.dmin/100,null,bg,false,'+0.00%;-0.00%'));
+      sc(ws,i+2,5,SC(u.dmax/100,null,bg,false,'+0.00%;-0.00%'));
+    });
+    ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:ufData.length+2,c:5}});
+    ws['!merges']=[{s:{r:0,c:0},e:{r:0,c:5}}];
+    ws['!cols']=[8,20,20,14,13,13].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb,ws,sheetName);
+  }
+  if (ufEco.length) makeUFSheet(ufEco, 'UF — Econômico');
+  if (ufRap.length) makeUFSheet(ufRap, 'UF — Rápido');
+
+  // ── Sheets: Envios ──────────────────────────────────────────────
+  if (ships && ships.length) {
+    const valid = ships.filter(s=>s.freteAtual!==null&&s.freteNova!==null);
+    const tot = valid.length;
+    const sumA = valid.reduce((s,r)=>s+r.freteAtual,0);
+    const sumN = valid.reduce((s,r)=>s+r.freteNova,0);
+    const dif = sumN-sumA, pct = dif/sumA*100;
+
+    const ws4 = {};
+    sc(ws4,0,0,T(`Impacto nos Envios — ${nomeAtual} vs ${nomeNova}`)); for(let c=1;c<6;c++) sc(ws4,0,c,T(''));
+    [['Total Envios',tot,''],
+     [`Frete Total (${nomeAtual})`,sumA,'R$ #,##0.00'],
+     [`Frete Total (${nomeNova})`,sumN,'R$ #,##0.00'],
+     ['Diferença R$',dif,'R$ #,##0.00'],
+     ['Diferença %',pct/100,'+0.00%;-0.00%']].forEach(([lbl,val,nf],i) => {
+      const bg = i>=3?(dif>=0?'FFE0E0':'E0FFE0'):WH, fg = i>=3?(dif>=0?RD:GN):'000000';
+      sc(ws4,i+1,0,SL(lbl,null,bg,i>=3));
+      sc(ws4,i+1,1,SR(val,fg,bg,i>=3,nf));
+    });
+
+    const byUF = {};
+    valid.forEach(s=>{const uf=s.uf||'??';(byUF[uf]=byUF[uf]||{n:0,a:0,n2:0}).n++;byUF[uf].a+=s.freteAtual;byUF[uf].n2+=s.freteNova});
+    const ufA = Object.entries(byUF).map(([uf,d])=>({uf,n:d.n,a:d.a,n2:d.n2,dif:d.n2-d.a,pct:(d.n2-d.a)/d.a*100,pe:d.n/tot*100})).sort((a,b)=>Math.abs(b.dif)-Math.abs(a.dif));
+
+    let r4 = 7;
+    for(let c=0;c<7;c++) sc(ws4,r4,c,SC('POR UF',WH,BM,true)); r4++;
+    ['UF','Nº Envios','% dos Envios','Frete Atual','Frete Novo','Dif. R$','Dif. %'].forEach((h,c)=>sc(ws4,r4,c,H(h))); r4++;
+    ufA.forEach((u,i)=>{
+      const bg=i%2===0?BL:WH, fg=u.dif>=0?RD:GN;
+      sc(ws4,r4,0,SC(u.uf,null,bg,true)); sc(ws4,r4,1,SC(u.n,null,bg));
+      sc(ws4,r4,2,SC(u.pe/100,null,bg,false,'0.0%'));
+      sc(ws4,r4,3,SR(u.a,null,bg,false,'R$ #,##0.00')); sc(ws4,r4,4,SR(u.n2,null,bg,false,'R$ #,##0.00'));
+      sc(ws4,r4,5,SR(u.dif,fg,bg,true,'R$ #,##0.00')); sc(ws4,r4,6,SC(u.pct/100,fg,bg,true,'+0.00%;-0.00%'));
+      r4++;
+    });
+    ws4['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:r4,c:7}});
+    ws4['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}},{s:{r:7,c:0},e:{r:7,c:7}}];
+    ws4['!cols']=[22,13,11,18,18,16,13].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb,ws4,'Impacto Envios');
+
+    const ws5 = {};
+    sc(ws5,0,0,T('Envios Individuais')); for(let c=1;c<8;c++) sc(ws5,0,c,T(''));
+    ['CEP','UF','Peso (kg)','Modalidade','Frete Atual','Frete Novo','Dif. R$','Dif. %'].forEach((h,c)=>sc(ws5,1,c,H(h)));
+    valid.sort((a,b)=>(a.uf||'').localeCompare(b.uf||'')).forEach((s,i)=>{
+      const bg=i%2===0?BL:WH, dv=s.freteNova-s.freteAtual, fg=dv>=0?RD:GN;
+      sc(ws5,i+2,0,SC(s.cep,null,bg)); sc(ws5,i+2,1,SC(s.uf||'?',null,bg,true));
+      sc(ws5,i+2,2,SC(s.peso,null,bg,false,'0.000')); sc(ws5,i+2,3,SL(s.modal,null,bg));
+      sc(ws5,i+2,4,SR(s.freteAtual,null,bg,false,'R$ #,##0.00')); sc(ws5,i+2,5,SR(s.freteNova,null,bg,false,'R$ #,##0.00'));
+      sc(ws5,i+2,6,SR(dv,fg,bg,true,'R$ #,##0.00')); sc(ws5,i+2,7,SC(dv/s.freteAtual,fg,bg,true,'+0.00%;-0.00%'));
+    });
+    ws5['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:valid.length+2,c:7}});
+    ws5['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}}];
+    ws5['!cols']=[12,7,12,20,18,18,14,12].map(w=>({wch:w}));
+    XLSX.utils.book_append_sheet(wb,ws5,'Envios Individuais');
+  }
+
+  XLSX.writeFile(wb, `Comparativo_${nomeAtual}_vs_${nomeNova}.xlsx`);
+  toast('✓ Excel exportado com sucesso!');
+}
+</script>
+</body>
+</html>
