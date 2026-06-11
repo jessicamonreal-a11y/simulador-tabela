@@ -396,63 +396,122 @@ function checkReady() { document.getElementById('btn-run').disabled = !(S.atual 
 
 // ══════════════════════════════════════════════════════
 // PRICE TABLE PARSER
-// Structure:
-//   Row 5: 'PESO (g)', [empty], SP, RJ, ...TO, 'PESO (g)', [empty], SP, RJ, ...TO
-//   Row 6+: peso_from(g), peso_to(g), prices...   (capital), peso_from, peso_to, prices... (interior)
+// Structure per sheet:
+//   Row with 'Área 1' label → Capital Área 1 + Interior Área 1
+//   Row with 'PESO (g)' → UF headers
+//   Data rows: peso_from, peso_to, price per UF...
+//   Row 'KG adicional' → per-kg surcharge above max weight
+//   [blank row]
+//   Row with 'Área 2' label → Capital Área 2 + Interior Área 2
+//   Row with 'PESO (g)' → UF headers (same)
+//   Data rows: different prices for Área 2
+//   Row 'KG adicional' → per-kg surcharge for Área 2
 // ══════════════════════════════════════════════════════
 function parsePriceSheet(rows) {
-  // Find header row (has 'PESO (g)')
-  let hi = -1;
+  if (!rows || !rows.length) return null;
+
+  // Find all 'PESO (g)' header rows — one per section (Área 1, Área 2)
+  const pesoHeaderRows = [];
   for (let i = 0; i < rows.length; i++) {
-    if (rows[i] && rows[i].some(v => String(v||'').trim() === 'PESO (g)')) { hi = i; break; }
+    if (rows[i] && rows[i].some(v => String(v||'').trim() === 'PESO (g)'))
+      pesoHeaderRows.push(i);
   }
-  if (hi < 0) return null;
+  if (!pesoHeaderRows.length) return null;
 
-  const hrow = rows[hi];
-  // Find the two PESO(g) column positions
-  const pesoCols = hrow.reduce((a,v,i) => { if (String(v||'').trim() === 'PESO (g)') a.push(i); return a; }, []);
-  if (!pesoCols.length) return null;
+  // For each section, find its Área label (row just above its PESO header)
+  // and parse its data rows (until next section or end)
+  function parseSection(pesoHeaderIdx, endRowIdx) {
+    const hrow = rows[pesoHeaderIdx];
+    // Find PESO(g) column positions
+    const pesoCols = hrow.reduce((a,v,i) => {
+      if (String(v||'').trim() === 'PESO (g)') a.push(i); return a;
+    }, []);
 
-  // Extract UF names for each section
-  const sections = pesoCols.map((pc, si) => {
-    const ufs = [];
-    for (let j = pc + 2; j < (pesoCols[si+1] || hrow.length); j++) {
-      const v = hrow[j];
-      if (v !== null && v !== undefined && String(v).trim().length === 2 && /^[A-Z]{2}$/.test(String(v).trim()))
-        ufs.push({ uf: String(v).trim(), col: j });
-    }
-    return { pesoFromCol: pc, pesoToCol: pc+1, ufs, label: si === 0 ? 'Capital' : 'Interior' };
-  });
-
-  // Build price data: { Capital: { UF: [[from_g, to_g, price], ...] }, Interior: {...} }
-  const data = {};
-  sections.forEach(sec => { data[sec.label] = {}; sec.ufs.forEach(u => { data[sec.label][u.uf] = []; }); });
-
-  for (let ri = hi + 1; ri < rows.length; ri++) {
-    const row = rows[ri]; if (!row) continue;
-    sections.forEach(sec => {
-      const pf = row[sec.pesoFromCol], pt = row[sec.pesoToCol];
-      if (pf === null || pf === undefined || isNaN(+pf)) return;
-      sec.ufs.forEach(u => {
-        const p = row[u.col];
-        if (p !== null && p !== undefined && !isNaN(+p))
-          data[sec.label][u.uf].push([+pf, +pt, +p]);
-      });
+    // Extract UF names for each sub-section (Capital, Interior)
+    const subSections = pesoCols.map((pc, si) => {
+      const ufs = [];
+      for (let j = pc + 2; j < (pesoCols[si+1] || hrow.length); j++) {
+        const v = hrow[j];
+        if (v && /^[A-Z]{2}$/.test(String(v).trim()))
+          ufs.push({ uf: String(v).trim(), col: j });
+      }
+      return { pesoFromCol: pc, pesoToCol: pc+1, ufs, tipo: si === 0 ? 'Capital' : 'Interior' };
     });
+
+    const data = {};
+    const kgAdicional = {};
+    subSections.forEach(s => { data[s.tipo] = {}; s.ufs.forEach(u => { data[s.tipo][u.uf] = []; }); });
+
+    for (let ri = pesoHeaderIdx + 1; ri < endRowIdx; ri++) {
+      const row = rows[ri]; if (!row) continue;
+      const first = String(row[pesoCols[0]] || '').trim();
+      if (first === 'KG adicional' || first === 'KG Adicional') {
+        // Parse KG adicional row
+        subSections.forEach(s => {
+          s.ufs.forEach(u => {
+            const v = row[u.col];
+            if (v !== null && v !== undefined && !isNaN(+v))
+              kgAdicional[s.tipo + '|' + u.uf] = +v;
+          });
+        });
+        continue;
+      }
+      subSections.forEach(s => {
+        const pf = row[s.pesoFromCol], pt = row[s.pesoToCol];
+        if (pf === null || pf === undefined || isNaN(+pf)) return;
+        s.ufs.forEach(u => {
+          const p = row[u.col];
+          if (p !== null && p !== undefined && !isNaN(+p))
+            data[s.tipo][u.uf].push([+pf, +pt, +p]);
+        });
+      });
+    }
+    return { data, kgAdicional };
   }
-  return data;
+
+  // Determine which Área each section belongs to (look at row above PESO header)
+  const sections = {};
+  for (let idx = 0; idx < pesoHeaderRows.length; idx++) {
+    const hi = pesoHeaderRows[idx];
+    const end = pesoHeaderRows[idx+1] || rows.length;
+    // Scan rows above this PESO header to find Área label
+    let areaLabel = 'Área 1';
+    for (let k = hi - 1; k >= Math.max(0, hi - 3); k--) {
+      const row = rows[k]; if (!row) continue;
+      const found = row.find(v => String(v||'').includes('Área'));
+      if (found) { areaLabel = String(found).trim(); break; }
+    }
+    sections[areaLabel] = parseSection(hi, end);
+  }
+
+  // Merge: if only one section found, treat it as Área 1
+  if (!sections['Área 1'] && !sections['Área 2']) {
+    const keys = Object.keys(sections);
+    if (keys.length) sections['Área 1'] = sections[keys[0]];
+  }
+
+  return sections; // { 'Área 1': { data, kgAdicional }, 'Área 2': { ... } }
 }
 
-function getPrice(data, tipo, uf, peso_g) {
+function getPrice(sections, area, tipo, uf, peso_g) {
+  const sec = sections[area] || sections['Área 1'];
+  if (!sec) return null;
+  const { data, kgAdicional } = sec;
   const rows = (data[tipo] || data['Capital'] || {})[uf];
   if (!rows || !rows.length) return null;
+
+  const maxRow = rows[rows.length - 1];
+  const maxPeso = maxRow[1];
+
+  if (peso_g > maxPeso) {
+    const kgRate = kgAdicional[tipo + '|' + uf] || kgAdicional['Capital|' + uf];
+    if (!kgRate) return maxRow[2]; // fallback to max price
+    return maxRow[2] + (peso_g - maxPeso) * kgRate;
+  }
+
   const r = rows.find(r => r[0] <= peso_g && peso_g <= r[1]);
   if (r) return r[2];
-  // Edge case: below min
-  const sorted = [...rows].sort((a,b) => a[0]-b[0]);
-  if (peso_g <= sorted[0][1]) return sorted[0][2];
-  // Above max
-  return sorted[sorted.length-1][2];
+  return rows.find(r => r[1] >= peso_g)?.[2] ?? null;
 }
 
 // ══════════════════════════════════════════════════════
@@ -470,7 +529,13 @@ function parseAbr(rows) {
   const out = [];
   for (let i = hi+1; i < rows.length; i++) {
     const r = rows[i]; if (!r || r[0] === null || r[0] === undefined) continue;
-    try { out.push({ cs: +r[0], ce: +r[1], uf: String(r[2]||'').trim(), tipo: String(r[3]||'').trim(), pctSeg: +r[4] }); }
+    try { out.push({
+      cs: +r[0], ce: +r[1],
+      uf: String(r[2]||'').trim(),
+      tipo: String(r[3]||'').trim(),
+      pctSeg: +r[4],
+      area: String(r[5]||'Área 1').trim()  // col 5 = Área
+    }); }
     catch {}
   }
   return out.sort((a,b) => a.cs - b.cs);
@@ -492,13 +557,12 @@ function cepLookup(cep, abr) {
 // peso_g: weight in grams (from envio: peso_kg * 1000)
 // tipo: Capital or Interior (from Abrangência)
 // ══════════════════════════════════════════════════════
-function calcFrete(priceData, abr, cep, pesoKg, co, la, al, vd) {
+function calcFrete(priceSections, abr, cep, pesoKg, co, la, al, vd) {
   const zi = cepLookup(cep, abr);
   if (!zi) return null;
-  const { uf, tipo, pctSeg } = zi;
-  // No cubic weight in this format — use real weight in grams
+  const { uf, tipo, pctSeg, area } = zi;
   const pesoG = Math.round(pesoKg * 1000);
-  const tarifa = getPrice(priceData, tipo, uf, pesoG);
+  const tarifa = getPrice(priceSections, area, tipo, uf, pesoG);
   if (tarifa === null) return null;
   const frete = tarifa + (vd > 0 ? vd * pctSeg : 0);
   return { frete: Math.round(frete * 10000) / 10000, uf, tipo };
@@ -507,21 +571,24 @@ function calcFrete(priceData, abr, cep, pesoKg, co, la, al, vd) {
 // ══════════════════════════════════════════════════════
 // TABLE-TO-TABLE COMPARISON
 // ══════════════════════════════════════════════════════
-function compareTables(atual, nova) {
-  // Returns per-UF stats for each tipo (Capital/Interior combined → by UF)
+function compareTables(atualSections, novaSections) {
+  const areas = ['Área 1', 'Área 2'];
   const byUF = {};
-  ['Capital','Interior'].forEach(tipo => {
-    const aData = atual[tipo] || {}; const nData = nova[tipo] || {};
-    Object.keys(aData).forEach(uf => {
-      const aRows = aData[uf]; const nRows = nData[uf];
-      if (!aRows || !nRows) return;
-      aRows.forEach((ar, idx) => {
-        const nr = nRows[idx];
-        if (!nr || ar[2] === 0) return;
-        const diff = (nr[2] - ar[2]) / ar[2] * 100;
-        (byUF[uf] = byUF[uf] || { p1s:[], p2s:[], ds:[] }).p1s.push(ar[2]);
-        byUF[uf].p2s.push(nr[2]);
-        byUF[uf].ds.push(diff);
+  areas.forEach(area => {
+    const a = atualSections[area]; const n = novaSections[area];
+    if (!a || !n) return;
+    ['Capital','Interior'].forEach(tipo => {
+      const aData = a.data[tipo] || {}; const nData = n.data[tipo] || {};
+      Object.keys(aData).forEach(uf => {
+        const aRows = aData[uf]; const nRows = nData[uf];
+        if (!aRows || !nRows) return;
+        aRows.forEach((ar, idx) => {
+          const nr = nRows[idx];
+          if (!nr || ar[2] === 0) return;
+          const diff = (nr[2] - ar[2]) / ar[2] * 100;
+          (byUF[uf] = byUF[uf] || { p1s:[], p2s:[], ds:[] }).p1s.push(ar[2]);
+          byUF[uf].p2s.push(nr[2]); byUF[uf].ds.push(diff);
+        });
       });
     });
   });
@@ -531,18 +598,22 @@ function compareTables(atual, nova) {
   })).sort((a,b) => b.davg - a.davg);
 }
 
-// Global % difference between two price tables
-function globalDiff(atual, nova) {
+function globalDiff(atualSections, novaSections) {
+  const areas = ['Área 1', 'Área 2'];
   const diffs = [];
-  ['Capital','Interior'].forEach(tipo => {
-    const aData = atual[tipo] || {}; const nData = nova[tipo] || {};
-    Object.keys(aData).forEach(uf => {
-      const aRows = aData[uf]; const nRows = nData[uf];
-      if (!aRows || !nRows) return;
-      aRows.forEach((ar, idx) => {
-        const nr = nRows[idx];
-        if (!nr || ar[2] === 0) return;
-        diffs.push((nr[2] - ar[2]) / ar[2] * 100);
+  areas.forEach(area => {
+    const a = atualSections[area]; const n = novaSections[area];
+    if (!a || !n) return;
+    ['Capital','Interior'].forEach(tipo => {
+      const aData = a.data[tipo] || {}; const nData = n.data[tipo] || {};
+      Object.keys(aData).forEach(uf => {
+        const aRows = aData[uf]; const nRows = nData[uf];
+        if (!aRows || !nRows) return;
+        aRows.forEach((ar, idx) => {
+          const nr = nRows[idx];
+          if (!nr || ar[2] === 0) return;
+          diffs.push((nr[2] - ar[2]) / ar[2] * 100);
+        });
       });
     });
   });
